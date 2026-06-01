@@ -565,6 +565,16 @@ class ORCA(logfileparser.Logfile):
 
             self._append_scfvalues_scftargets(inputfile, line)
 
+        # XTB methods (XTB1, XTB2, GFNFF) do not use an SCF block, so
+        # 'SCF CONVERGED AFTER' never fires and scfenergies is not populated.
+        # For these methods, read the energy directly from FINAL SINGLE POINT ENERGY.
+        # Format: "FINAL SINGLE POINT ENERGY       -11.301244308900"
+        _XTB_KEYWORDS = {"XTB0", "XTB1", "XTB2", "GFNFF"}
+        if line.startswith("FINAL SINGLE POINT ENERGY"):
+            if _XTB_KEYWORDS & {k.upper() for k in self.metadata.get("keywords", [])}:
+                self.append_attribute("scfenergies", float(line.split()[-1]))
+                self.metadata["methods"].append("XTB")
+
         # Sometimes the SCF does not converge, but does not halt the
         # the run (like in bug 3184890). In this this case, we should
         # remain consistent and use the energy from the last reported
@@ -2518,13 +2528,21 @@ Dispersion correction           -0.016199959
 
         if line.startswith("DIPOLE MOMENT"):
             self.skip_lines(inputfile, "d")
-            line = next(inputfile)  # blank or XYZ
+            line = next(inputfile)  # blank or XYZ header
             if line.strip() == "":
                 while line.split() != ["X", "Y", "Z"]:
                     line = next(inputfile)
 
-            self.skip_lines(inputfile, ["electronic", "nuclear", "d"])
-            total = next(inputfile)
+            # DFT output has Electronic/Nuclear contribution lines before Total.
+            # XTB output jumps directly to Total Dipole Moment.
+            line = next(inputfile)
+            if "Total Dipole Moment" in line:
+                total = line
+            else:
+                # DFT: line is "Electronic contribution", skip Nuclear + dashes
+                next(inputfile)  # Nuclear contribution
+                next(inputfile)  # dashes
+                total = next(inputfile)
             assert "Total Dipole Moment" in total
 
             dipole = numpy.array([float(d) for d in total.split()[-3:]])
