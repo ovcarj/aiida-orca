@@ -2475,6 +2475,17 @@ Dispersion correction           -0.016199959
         if line.startswith("CHELPG Charges"):
             self.parse_charge_section(line, inputfile, "chelpg")
 
+        # RESP Charges (ORCA 6)
+        # RESP Charges
+        # --------------------------------
+        #   0   O   :      -0.605457
+        #   1   H   :       0.302731
+        # --------------------------------
+        # Total charge:     0.000000
+        # --------------------------------
+        if line.startswith("RESP Charges"):
+            self.parse_charge_section(line, inputfile, "resp")
+
         # The center of mass is used as the origin
         # It is not stated explicitely, but the dipole moment components printed by ORCA
         # seem to be in atomic units, so they will need to be converted.
@@ -2968,7 +2979,7 @@ Dispersion correction           -0.016199959
           handle to file object
         chargestype : str
           what type of charge we're dealing with, must be one of
-          'mulliken', 'lowdin', 'chelpg' or 'hirshfeld'
+          'mulliken', 'lowdin', 'chelpg', 'hirshfeld' or 'resp'
         """
         has_spins = "AND SPIN POPULATIONS" in line
 
@@ -3000,6 +3011,15 @@ Dispersion correction           -0.016199959
                 return x.startswith("---")
 
             start, stop = 11, 26
+        elif chargestype == "resp":
+            # ORCA 6 RESP format (one extra leading space vs CHELPG):
+            # "  N   El   :      charge"
+            # Stop at the closing dashes line.
+            def should_stop(x: str) -> bool:
+                return x.startswith("---")
+
+            start, stop = 12, None  # float(line[12:]) handles trailing whitespace
+
         elif chargestype == "hirshfeld":
 
             def should_stop(x: str) -> bool:
